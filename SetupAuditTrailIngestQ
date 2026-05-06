@@ -1,0 +1,82 @@
+public class SetupAuditTrailIngestQ implements Queueable {
+
+    public void execute(QueueableContext qc) {
+
+        Datetime lastSeen = WaterMarkUtility.getLastSeen();
+        Datetime fromTime = lastSeen.addMinutes(-1);
+
+        List<SetupAuditTrail> rows = [
+            SELECT Id, Action, Section, CreatedDate, CreatedBy.Name, Display
+            FROM SetupAuditTrail
+            //WHERE CreatedDate = LAST_N_DAYS:60
+            Where CreatedDate > :lastSeen
+            AND CreatedBy.Name NOT IN ('DE Copado', '', 'Automated Process')
+            AND Action NOT IN (
+                'changedUserEmailVerifiedStatusVerified','changedpassword',
+                'PermSetAssign','PermSetUnassign','PermSetGroupAssign','PermSetGroupUnassign',
+                'suOrgAdminLogin','suOrgAdminLogout','namedCredentialEncryptedFieldChange',
+                'enableSIQUserNonEAC','groupMembership','changedroleforuserfromnone',
+                'registeredUserPhoneNumber','changedemail',
+                'changedUserEmailVerifiedStatusUnverified','useremailchangesent',
+                'changedsenderemail','changedroleforuser','createdcustomersuccessuser',
+                'changedSenderEmailVerifiedStatusVerified','createdpartneruser','createduser',
+                'insertTwoFactorInfo2','resetpassword','deactivateduser','activateduser',
+                'changedfederationid','suNetworkAdminLogin','suNetworkAdminLogout',
+                'changedDelegateApprover','PermSetLicenseUnassign','unfrozeuser','frozeuser',
+                'changedsupportuseroffon','changedprofileforuserstdtocust','changedusername',
+                'changedcommunitynickname','changedprofileforuser','addeduserpackagelicense',
+                'granteduserpackagelicense','revokeduserpackagelicense','changedUserPhoneNumber'
+            )
+            ORDER BY CreatedDate DESC
+            LIMIT 200
+        ];
+
+        System.debug('Fetched SetupAuditTrail records = ' + rows.size());
+
+        if (rows.isEmpty()) {
+            return;
+        }
+
+        List<Setup_Audit_Log__c> logs = new List<Setup_Audit_Log__c>();
+
+        for (SetupAuditTrail r : rows) {
+            logs.add(setupAuditLogMapper.toLog(r));
+        }
+
+        System.debug('Mapped Setup_Audit_Log__c records = ' + logs.size());
+
+        try {
+            upsert logs SetupAuditTrail__c.External_ID__c;
+
+            System.debug('UPSERT SUCCESS. Records processed = ' + logs.size());
+
+
+            for(Setup_Audit_Log__c l : logs) {
+            // This will print the actual SFDC ID (starts with 001, a01, etc.)
+            System.debug('ACTUAL RECORD ID IN DATABASE: ' + l.Id);
+            
+            }
+
+        } catch (DmlException e) {
+
+            System.debug('UPSERT FAILED: ' + e.getMessage());
+
+            for (Integer i = 0; i < e.getNumDml(); i++) {
+                System.debug('Record ' + i + ' error: ' + e.getDmlMessage(i));
+            }
+            return;
+        }
+
+        Datetime newLastSeen = rows[rows.size() - 1].CreatedDate;
+        WaterMarkUtility.setLastSeen(newLastSeen);
+
+        System.debug('Updated watermark to = ' + newLastSeen);
+
+        if (rows.size() == 100) {
+            System.debug('Chaining next Queueable run');
+            System.enqueueJob(new SetupAuditTrailIngestQ());
+        }
+
+        System.debug('--- SetupAuditTrailIngestQ END ---');
+    }
+}
