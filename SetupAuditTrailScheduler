@@ -1,0 +1,15 @@
+global class SetupAuditTrailScheduler implements Schedulable {
+
+    global void execute(SchedulableContext sc) {
+
+        System.debug(LoggingLevel.INFO,
+            '--- SetupAuditTrailScheduler START ---'
+        );
+
+        System.enqueueJob(new SetupAuditTrailIngestQ());
+
+        System.debug(LoggingLevel.INFO,
+            'Queueable job enqueued successfully'
+        );
+    }
+}
