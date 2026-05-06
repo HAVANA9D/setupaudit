@@ -1,0 +1,73 @@
+public class setupAuditLogMapper {
+
+    public static Setup_Audit_Log__c toLog(SetupAuditTrail logs) {
+
+        
+        Setup_Audit_Log__c audit = new Setup_Audit_Log__c();
+         audit.Name = 'Setup Change - ' +
+            logs.CreatedDate.format('yyyy-MM-dd HH:mm:ss');
+        audit.Occurred_At__c = logs.CreatedDate;
+        audit.Actor_User_Id__c = logs.CreatedById;
+        audit.Action__c = logs.Display;
+
+       
+        audit.Section__c = 'Other';
+        audit.Risk__c = 'Low';
+        audit.Is_Authorized__c = true;
+        audit.Send_Email_Notification__c = false;
+        audit.Send_Custom_Notification__c  = false;
+        if (logs.CreatedById != null) {
+            User u = [
+                SELECT Id, Name
+                FROM User
+                WHERE Id = :logs.CreatedById
+                LIMIT 1
+            ];
+            audit.Actor_Username__c = u.Name;
+        }
+
+
+                if (String.isNotBlank(logs.Display)) {
+                      List<Authorized_Setup_Change__mdt> rules =
+                [SELECT Action_Contains__c,
+                        Section__c,
+                        Max_Risk__c,
+                        Is_Authorized__c,Send_Email_Notification__c,
+                 Send_Custom_Notification__c
+                 FROM Authorized_Setup_Change__mdt];
+                    
+            for (Authorized_Setup_Change__mdt m : rules) {
+
+                if (String.isNotBlank(m.Action_Contains__c) &&
+                    logs.Display.toLowerCase()
+                        .contains(m.Action_Contains__c.toLowerCase())) {
+
+                    audit.Section__c = m.Section__c;
+                    audit.Risk__c = m.Max_Risk__c;
+                    audit.Is_Authorized__c = m.Is_Authorized__c;
+                    audit.Send_Email_Notification__c = m.Send_Email_Notification__c;
+                    audit.Send_Custom_Notification__c = m.Send_Custom_Notification__c;
+                    break; 
+                }
+            }
+                    
+                }
+      
+        audit.External_ID__c =
+            logs.Id + '_' + String.valueOf(logs.CreatedDate.getTime());
+                      System.debug(LoggingLevel.INFO,
+            'Mapped Setup_Audit_Log__c => ' +
+            'Name=' + audit.Name +
+            ', Occurred_At=' + audit.Occurred_At__c +
+            ', Actor_User_Id=' + audit.Actor_User_Id__c +
+            ', Action=' + audit.Action__c +
+            ', Section=' + audit.Section__c +
+            ', Risk=' + audit.Risk__c +
+            ', Authorized=' + audit.Is_Authorized__c +
+            ', External_ID=' + audit.External_ID__c +
+            ', EmailNotify=' + audit.Send_Email_Notification__c +
+            ', CustomNotify=' + audit.Send_Custom_Notification__c
+        );
+        return audit;
+    }
+}
